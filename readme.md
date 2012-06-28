@@ -1,8 +1,12 @@
+*(this is a work in progress. Come back later for more.)*
+
 jxi
 ===
 
 Officially pronounced "jay-ex-eye" (personally I like "jack-see"), the acronym JXI stands for 'Some Kind of Funky **(J)**SON/**(X)**ML Hybrid/Mashup Data **(I)**nterchange Format Thing'.
 
+overview
+========
 jxi was originally designed to be a nice way to serialise readable data from python, but I think it could be useful for other languages too.
 
 It is a superset of JSON, but not XML, and the gist of its raison d'être is this:
