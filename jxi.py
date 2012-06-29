@@ -198,7 +198,7 @@ def _list():
 	_recognise("sym","[")
 	if not _token_is("sym", "]"):
 		thelist.append(_attribute())
-		while not _token_is("sym", "]"):
+		while not _token_is("sym", "]") and _token[0] != "EOF":
 			if _token_is("sym", ","): _next()
 			thelist.append(_attribute())
 			if _token_is("sym", ","): _next()
@@ -230,15 +230,15 @@ def _dict():
 	return thedict
 
 def _str(obj):
-	if type(obj) == str:
+	if isinstance(obj, basestring):
 		return '"%s"' % obj.replace("\\","\\\\").replace('"','\\"')
-	elif type(obj) in (float, int): 
+	elif isinstance(obj, (int, float, long)): 
 		return str(obj)
 	elif type(obj) == bool:
 		return "true" if obj else "false"
 	elif obj == None:
 		return "null"
-	elif type(obj) == list:
+	elif isinstance(obj, list):
 		if len(obj) == 0: return"[]"
 		else:
 			# iterate over list and recurse
@@ -246,7 +246,7 @@ def _str(obj):
 			for item in obj[1:]:
 				contents += ","+_str(item)
 			return "[%s]" % contents
-	elif type(obj) == dict:
+	elif isinstance(obj, dict):
 		if len(obj) == 0: return "{}"
 		else:
 			# iterate over key, val pairs and recurse
