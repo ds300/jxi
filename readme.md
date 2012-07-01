@@ -1,5 +1,7 @@
 *(this is a work in progress. Come back later for more.)*
 
+fucking _attrs() method to get list of attributes, yeah?
+
 jxi
 ===
 
@@ -17,12 +19,20 @@ It is a superset of JSON, but not XML, and the gist of its raison d'être is thi
 
 Ok so here's the high level description of what jxi does to solve these problems; you take XML, disallow text inbetween tags (i.e. &lt;lol&gt;hahaha&lt;/lol&gt; is a no-no. The only thing that can go between tags is other tags), then you let arbitrary JSON expressions be attributes of the xml tags. Let's look at a quick example:
 
-    <wizard beard="white" level=6 spells_learned=["invisibility", "fireball", "aura of erotic mystery"]>
+    <wizard 
+        beard="white" 
+        level=6 
+        spells_learned=[
+            "invisibility", 
+            "fireball", 
+            "aura of erotic mystery"
+        ]
+        >
     	<hat pointy=true angle_of_incline_degrees=7.23e1 />
     	<hat pointy=false occasion_suitability={
-    		parties: "adequate",
-    		"foraging for berries": "dismal",
-    		funerals: "perfect"
+    		parties: \adequate\,
+    		\foraging for berries\: "dismal",
+    		funerals: \perfect\
     	} />
     </wizard>
 

@@ -1,6 +1,6 @@
 # coding=utf-8
 import unittest, random
-from jxi import _Lexer, JXITag, parse, _symbols, JXIParseError
+from jxi import _Lexer, JXITag, _parse, _symbols, JXIParseError
 
 ###########################
 ##### WHITE BOX TESTS #####
@@ -104,7 +104,7 @@ cool s\\"tring thing">
 	<tag_2 banana = 'she\\'s on fire!' yes=true />
 </tag_1>"""
 		
-		self.root = parse(text)
+		self.root = _parse(text)
 	def test_encode(self):
 
 		alist = [2,3,4,5,56,-4]
@@ -127,7 +127,7 @@ cool s\\"tring thing">
 		
 
 	def test_decode(self):
-		self.root = parse(str(self.root))
+		self.root = _parse(str(self.root))
 		self.test_encode()
 		self.test_adding_and_removing_stuff()
 
@@ -146,7 +146,7 @@ cool s\\"tring thing">
 
 		# now try adding stuffs
 		for i in range(10):
-			self.root._add(parse("<item id=%d />" % i))
+			self.root._add(_parse("<item id=%d />" % i))
 
 		# print self.root[0]._tag_name
 		# check they're all there
@@ -158,7 +158,7 @@ cool s\\"tring thing">
 		# add some in the middle or something.
 		# do it backwards to check if the reordering thingy works
 		for i in range(4, -1, -1):
-			self.root._add(parse("<otheritem id=%d/>" % i), 5)
+			self.root._add(_parse("<otheritem id=%d/>" % i), 5)
 
 		# check that they're in the right place
 		for i in range(5):
@@ -167,7 +167,7 @@ cool s\\"tring thing">
 			self.assertEqual(self.root["otheritem"][i].id, i)
 			
 		# now do a weird one just to be sure
-		self.root._add(parse("<otheritem weird=true />"), 8)
+		self.root._add(_parse("<otheritem weird=true />"), 8)
 		self.assertTrue(self.root[8].weird)
 		self.assertTrue(self.root["otheritem"][3].weird)
 
@@ -179,62 +179,62 @@ cool s\\"tring thing">
 class TestParserErrors(unittest.TestCase):
 	def test_bad_closing_tag(self):
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something">""")
+			_parse("""<tag arrt="something">""")
 
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something"><tag>""")
+			_parse("""<tag arrt="something"><tag>""")
 
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something"<tag>""")
+			_parse("""<tag arrt="something"<tag>""")
 
 	def test_unclosed_string(self):
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something'></tag>""")
+			_parse("""<tag arrt="something'></tag>""")
 
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt='something"></tag>""")
+			_parse("""<tag arrt='something"></tag>""")
 
 	def test_bad_attribute(self):
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt=something></tag>""")
+			_parse("""<tag arrt=something></tag>""")
 
-		parse("""<tag arrt=[1,2,"hello",true]></tag>""")
+		_parse("""<tag arrt=[1,2,"hello",true]></tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt=[1,2,"hello",blah]></tag>""")
+			_parse("""<tag arrt=[1,2,"hello",blah]></tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt=[1,2,"hello",-]></tag>""")
+			_parse("""<tag arrt=[1,2,"hello",-]></tag>""")
 
-		parse("""<tag arrt={name:true, name2:false}></tag>""")
+		_parse("""<tag arrt={name:true, name2:false}></tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt={name:true, name2:blah}></tag>""")
+			_parse("""<tag arrt={name:true, name2:blah}></tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt={name:true, name2:_}></tag>""")
+			_parse("""<tag arrt={name:true, name2:_}></tag>""")
 
 	def test_bad_attribute_name(self):
 		with self.assertRaises(JXIParseError):
-			parse("""<tag _arrt="something"></tag>""")
+			_parse("""<tag _arrt="something"></tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag 4arrt="something"></tag>""")
+			_parse("""<tag 4arrt="something"></tag>""")
 
 	def test_bad_stuff_in_tag(self):
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something">s</tag>""")
+			_parse("""<tag arrt="something">s</tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something">#</tag>""")
+			_parse("""<tag arrt="something">#</tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something"><</tag>""")
+			_parse("""<tag arrt="something"><</tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something">4</tag>""")
+			_parse("""<tag arrt="something">4</tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something">"s"</tag>""")
+			_parse("""<tag arrt="something">"s"</tag>""")
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something">'yo'</tag>""")
+			_parse("""<tag arrt="something">'yo'</tag>""")
 
 	def test_mismatched_tags(self):
 		with self.assertRaises(JXIParseError):
-			parse("""<tag arrt="something"><tag></tag></targ>""")
+			_parse("""<tag arrt="something"><tag></tag></targ>""")
 
-		parse("""
+		_parse("""
     <person 
     	firstName="John"
     	lastName="Smith"
