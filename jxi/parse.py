@@ -1,4 +1,4 @@
-import re, sys, pyjxi
+import re, sys, pyjxi, string
 """
 Author: David Sheldrick
 Date: 2012-07-02
@@ -9,261 +9,220 @@ Date: 2012-07-02
 ###################
 
 class JXIParseError(Exception):
-	def __init__(self, message):
-		msg = "JXIParseError: detected at "
-		msg += "line %s char %s\n" % (line, index-line_start_char+1)
+	def __init__(self, message, line, line_start_char, index):
+		self.line = line
+		self.char = index-line_start_char+1
+		msg = "Error detected at "
+		msg += "line %s char %s\n" % (self.line, self.char)
 		msg += "\tMessage: " + message
-		Exception.__init__(msg)
-
-class FileWrapper(object):
-	"""
-	This class wraps a file-like object such that incremental indexing works
-	as with a string.
-
-	It only keeps 2kb worth of string in memory an any one time (obviously
-	without regard for delay in GC).
-	"""
-	def __init__(self, fileobj):
-		self.fo = fileobj
-		self.start = 0
-		self.end = 0
-		self.buffer = ""
-		self[0]
-
-	def __len__(self):
-		return self.end
-
-	def __getitem__(self, key):
-		if key == self.end:
-			# Load the next chunk of text from the file into the buffer and
-			# update the start/end indices
-			self.start += len(self.buffer)
-
-			self.buffer = self.fo.read(2048)
-			if not self.buffer: raise IndexError()
-
-			self.end += len(self.buffer)
-
-			return self.buffer[0]
-
-		return self.buffer[key-self.start]
+		self.msg = msg
+	def __str__(self):
+		return self.msg
 
 
 ##########################
 #### LEXICAL ANALYSIS ####
 ##########################
 
-# The regular expressions we'll be using
-re_white = re.compile(r"[\s,]") # totally ignore commas
-re_alpha = re.compile(r'[a-zA-Z]')
-re_word = re.compile(r'\w')
-re_num_start = re.compile(r'[\d\-]')
-# this next regex with thanks to Doug Crockford or whoever drew 
-# that diagram on the json website
-re_num = re.compile(r'^-?(0|[1-9]\d*)(\.\d+)?((e|E)(\+|-)?\d+)?')
-
-# the various symbols we need to recognise
-symbols = set(['<','>','[',']','{','}',':','/', '='])
-string_delimiters = set(['"', "'"])
-raw_string_delimiters = set(["`"])
-control_characters = {
-	"b": "\b",
-	"f": "\f",
-	"n": "\n",
-	"r": "\r",
-	"t": "\t"
-}
-
-# the input data/metadata
-input_text = ""
-line = 1
-line_start_char = 0
-index = -1
-c = ""
-
-# get the next character
-def next_char():
-	global index, c
-	index += 1
-	c = input_text[index]
-	return c
-
-def lex(arg):
+def lex(input_text):
 	"""
 	This is obviously the jxi lexical analyser. It is of straightforward design
 	"""
-	global line, line_start_char, index, input_text
 
-	# re-initialise variables in-case this gets called more than once
+	# The regular expressions we'll be using
+	whitespace = set([",", " ", "\v", "\t", "\n", "\r", "\f"])
+	# this next regex with thanks to Doug Crockford or whoever drew 
+	# that diagram on the json website
+	digits = set([str(i) for i in range(10)])
+	digits_sans_zero = set([str(i) for i in range(1,10)])
+	number_start_chars = digits | set(["-"])
+	print "nmstrc", number_start_chars
+	re_num = re.compile(r'^-?(0|[1-9]\d*)(\.\d+)?((e|E)(\+|-)?\d+)?')
+
+	# the various symbols we need to recognise
+	symbols = set(['<','>','[',']','{','}',':','/', '='])
+	letters = set([c for c in string.lowercase + string.uppercase])
+	word_chars = letters | set(["_"]) | digits
+	json_string_escapes = {}
+	for delim in ['"', "'"]:
+		json_string_escapes[delim] = set(["\b", "\f", "\n", "\r", "\t", "\\", delim])
+
+	raw_string_escapes = {}
+	for delim in ["`"]:
+		raw_string_escapes[delim] = set(["\\", delim])
+
+	control_characters = {
+		"b": "\b",
+		"f": "\f",
+		"n": "\n",
+		"r": "\r",
+		"t": "\t",
+		"\\": "\\",
+		"/": "/"
+	}
+	reserved_word_types = {"null":"null", "true":"bool", "false":"bool"}
+
 	line = 1
 	line_start_char = 0
-	index = -1
 
-	# get text
-	if isinstance(arg, basestring):
-		input_text = arg
-	else:
-		# assume it's a file-like object. If not, let the caller handle the 
-		# exception
-		input_text = FileWrapper(arg)
+	inp = input_text
+	i=0
 
-	# set up one-character lookahead
-	next_char()
+	size = len(input_text)
 
-	# now let's do some lexical analysis
-	try:
-		while True:
-			# ignore whitespace
-			while re_white.match(c):
-				if c == "\n":
-					line += 1
-					line_start_char = index
-				next_char()
+	# right! let's iterate over this text and do some lexical analysis
+	while i < size:
+		# skip over whitespace
+		while inp[i] in whitespace:
+			if inp[i] == "\n":
+				line += 1
+				line_start_char = 0
+			i += 1
 
-			# now figure out what type of token we're dealing with
+		# figure out what type of token we're dealing with
 
-			## IDENTIFIERS ##
-			if re_alpha.match(c):
-				# build the indentifer from the input text
-				ident = ""
-				while re_word.match(c):
-					ident += c
-					next_char()
+		### SYMBOLS ###
+		if inp[i] in symbols:
+			yield ("sym", inp[i])
+			i += 1
 
-				# now check for reserved words
-				if ident in ("true", "false"): yield ("bool", ident)
-				elif ident == "null": yield ("null", "null")
-				# not a reserved word, so it's an identifer
-				else: yield ("ident", ident)
+		### IDENTS ###
+		elif inp[i] in letters:
+			j = i+1
+			while inp[j] in word_chars:
+				j += 1
+			yield (reserved_word_types.get(inp[i:j], "ident"), inp[i:j])
+			i = j
 
-			## JSON STRING LITERALS ##
-			elif c in string_delimiters:
-				delim = c # save the delimiter
-				next_char() # but don't add it to the string, obviously
-				string = ""
-				while c != delim:
-					if c == "\\":
-						# we might need to escape something
-						next_char()
+		### JSON STRINGS ###
+		elif inp[i] in json_string_escapes:
+			delim = inp[i]
+			escapes = json_string_escapes[delim]
+			i += 1
+			text = ""
+			while inp[i] != delim:
+				j = i
+				while inp[j] not in escapes:
+					j += 1
+				text += inp[i:j]
+				i = j
+				if inp[i] == "\\":
+					# we need to escape something
+					i += 1
+					if inp[i] == delim:
+						text += delim
+						i += 1
 
-						if c in control_characters:
-							string += control_characters[c]
-							next_char()
+					elif inp[i] in control_characters:
+						text += control_characters[inp[i]]
+						i += 1
 
-						elif c == "u":
-							# we've got a 4-hexit unicode thing
-							charcode = 0
-							next_char()
-							for i in range(4):
-								try:
-									u = int(c, 16)
-								except ValueError:
-									raise JXIParseError("invalid unicode escape sequence")
-								charcode = charcode * 16 + u
-								next_char()
-							string += unichr(charcode)
-
-						else:
-							string += c
-							next_char()
+					elif inp[i] == "u":
+						# do the unicode thing
+						# this algorithm also with thanks to Doug Crockford
+						charcode = 0
+						i += 1
+						for j in range(4):
+							try:
+								u = int(inp[i], 16)
+							except ValueError:
+								msg = "invalid unicode hexadecimal format"
+								raise JXIParseError(msg, line, line_start_char, i)
+							charcode = charcode * 16 + u
+							i += 1
+						text += unichr(charcode).encode("utf-8")
 
 					else:
-						string += c
-						next_char()
+						msg = "Invalid escape sequence '\\%s'" % inp[i]
+						raise JXIParseError(msg, line, line_start_char, i)
 
-				# ignore final delimiter
-				next_char()
-				yield ("string", string)
+				elif inp[i] != delim:
+					# ignore for now
+					# msg = "Unescaped %s detected in string literal" % repr(inp[i])
+					# raise JXIParseError(msg, line, line_start_char, i)
+					i += 1
+			i += 1
+			yield ("string", text)
 
-			## RAW STRING LITERALS ##
-			elif c in raw_string_delimiters:
-				delim = c
-				next_char()
-				string = ""
-				while c != delim:
-					if c == "\\":
-						next_char()
-						# only escape the next character if it is the delimiter
-						if c != delim:
-							string += "\\"
-					string += c
-					next_char()
-
-				# ignore final delimiter
-				next_char()
-				yield ("rawstring", string)
-
-			## NUMBERS ##
-			elif re_num_start.match(c):
-				numtype = int
-				# optional negative
-				if c == "-":
-					numstring = c
-					next_char()
-				else:
-					numstring = ""
-
-				# either 0 or 1-9
-				if c == "0":
-					numstring += 0
-				else:
-					if not "1" <= c <= "9":
-						raise JXIParseError("invalid number '%s'" % numstring+c)
-					numstring += c
-					next_char()
-					# if 1-9, any series of digits now
-					while "0" <= c <= "9":
-						numstring += c
-						next_char()
-
-				# optional decimal place with more digits
-				if c == ".":
-					numtype = float
-					numstring += c
-					next_char()
-					if not "0" <= c <= "9":
-						raise JXIParseError("invalid number '%s'" % numstring+c)
-
-					while "0" <= c <= "9":
-						numstring += c
-						next_char()
-
-				# optional exponent
-				if c in ("e", "E"):
-					numtype = float
-					numstring += c
-					next_char()
-					# optional +/-
-					if c in ("+", "-"):
-						numstring += c
-						next_char()
-					# at least one digit for the exponent
-					if not "0" <= c <= "9":
-						raise JXIParseError("invalid number '%s'" % numstring+c)
-
-					while "0" <= c <= "9":
-						numstring += c
-						next_char()
-
-				# and that's the number finished
-				strnumtype = re.match(r"^<type '(.*?)'>$", str(numtype)).group(1)
-				yield (strnumtype, numtype(numstring))
-
-			## SYMBOLS ##
-			elif c in symbols:
-				yield ("sym", c)
-				next_char()
-
-			## ILLEGAL CHARACTERS ##
+		### NUMBERS ###
+		elif inp[i] in number_start_chars:
+			numtype = int
+			j = i
+			# optional minus
+			if inp[j] == "-":
+				j += 1
+			
+			# either 0 or 1-9
+			if inp[j] == "0":
+				j += 1
+			elif inp[j] in digits_sans_zero:
+				# if 1-9, then any other digits may follow
+				while inp[j] in digits:
+					j += 1
 			else:
-				yield ("ill", c)
-				next_char()
+				msg = "Expecting digit after '-', got %s" % repr(inp[j])
+				raise JXIParseError(msg, line, line_start_char, j)
 
-	except IndexError:
-		while True:
-			yield ("EOF", "EOF")
+			# optional . followed by more digits
+			if inp[j] == ".":
+				numtype = float
+				j += 1
+				if inp[j] not in digits:
+					msg = "Expecting digit after '.', got %s" % repr(inp[j])
+					raise JXIParseError(msg, line, line_start_char, j)
 
-for token in lex(open("test.jxi")):
-	if token[0] == "EOF": break
-	print token
+				while inp[j] in digits:
+					j += 1
+
+			# optional exponent
+			if inp[j] in ("E", "e"):
+				numtype = float
+				j += 1
+
+				# optional + or -
+				if inp[j] in ("+", "-"):
+					j += 1
+
+				# at least one digit
+				if inp[j] not in digits:
+					msg = "Expecting exponent value, got %s" % repr(inp[j])
+					raise JXIParseError(msg, line, line_start_char, j)
+
+				while inp[j] in digits:
+					j += 1
+
+			yield ("int" if numtype == int else "float", inp[i:j])
+			i = j
+
+		### RAW STRINGS ###
+		elif inp[i] in raw_string_escapes:
+			delim = inp[i]
+			escapes = raw_string_escapes[delim]
+			i += 1
+			text = ""
+			while inp[i] != delim and i < size:
+				j = i
+				while inp[j] not in escapes and j < size:
+					j += 1
+				text += inp[i:j]
+				i = j
+				if inp[i] == "\\":
+					i += 1
+					if inp[i] == delim:
+						text += delim
+					else:
+						text += "\\"
+
+			# ignore final delimiter
+			i += 1
+			yield ("rawstring", text)
+
+		else:
+			msg = "Illegal character %s" % repr(inp[i])
+			raise JXIParseError(msg, line, line_start_char, i)
+
+
+	yield ("EOF", "EOF")
+
+
 
