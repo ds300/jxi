@@ -1,8 +1,24 @@
+# Copyright (C) 2012 David Sheldrick
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
 import string
-"""
-Author: David Sheldrick
-Date: 2012-07-03
-"""
 
 line = 1
 
@@ -11,13 +27,16 @@ line = 1
 ###################
 
 class JXIParseError(Exception):
-	def __init__(self, message, line_start_char, index):
-		self.line = line
-		self.char = index-line_start_char+1
-		msg = "Error detected at "
-		msg += "line %s char %s\n" % (self.line, self.char)
-		msg += "\tMessage: " + message
-		self.msg = msg
+	def __init__(self, message, line_start_char=None, index=None, lineoverride=None):
+		self.line = lineoverride or line
+		if line_start_char != None and index != None:
+			self.char = index-line_start_char + 1
+			msg = "Error detected at "
+			msg += "line %s char %s\n" % (self.line, self.char)
+			msg += "\tMessage: " + message
+			self.msg = msg
+		else:
+			self.msg = "Error detected on line %s\n\tMessage: %s" % (line, message)
 	def __str__(self):
 		return self.msg
 
@@ -47,7 +66,7 @@ def lex(input_text):
 	# put all them symbols we're interested in into sets for fast membership tests
 
 	whitespace = set([",", " ", "\v", "\t", "\n", "\r", "\f"])
-	symbols = set(['<','>','[',']','{','}', "(", ")",':','/', '=', "@"])
+	symbols = set(['<','>','[',']','{','}', "(", ")",':','/', '=', "@", ".", ";"])
 
 	digits = set([str(i) for i in range(10)])
 	digits_sans_zero = set([str(i) for i in range(1,10)])

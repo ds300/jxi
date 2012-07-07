@@ -121,7 +121,7 @@ class TestSymbols(unittest.TestCase):
 			self.assertEqual(lex(symbol).next(), ("sym", symbol))
 
 		badsymbols = ['+', "|", "\\", "˙", "µ", "*", "$",
-		              "!", "£", ";", ".", "?", "~", "^", "%"]
+		              "!", "£", "?", "~", "^", "%"]
 		for symbol in badsymbols:
 			with self.assertRaises(JXIParseError):
 				print lex(symbol).next()
