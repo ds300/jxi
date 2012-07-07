@@ -1,1 +1,1 @@
-jxi is undergoing heave modifications.
+jxi is undergoing heavy modifications

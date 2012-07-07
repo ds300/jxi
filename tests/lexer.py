@@ -1,7 +1,7 @@
 # coding=utf-8
 import unittest, sys, os, random, string
 sys.path.append(os.path.abspath("../jxi/"))
-from parse import lex, JXIParseError
+from lex import lex, JXIParseError
 
 # We're gonna do some proper white box testing here and attempt to get
 # full statement coverage
@@ -150,7 +150,7 @@ class TestIdents(unittest.TestCase):
 		for ident in idents:
 			self.assertEqual(lex(ident).next(), ("ident", ident))
 			with self.assertRaises(JXIParseError):
-				lex("_"+ident+" ").next()
+				lex("_"+ident).next()
 
 #	3.1.2 reserved words
 	def test_reserved_words(self):
@@ -179,11 +179,25 @@ class TestJsonStrings(unittest.TestCase):
 						text+=c
 
 				self.assertEqual(lex(delim+text+delim).next(), ("string", text))
-					
-				
+
 # 		4.1.2 backslash escape
 # 			4.1.2.1 control characters
+	def test_escape_sequences(self):
+		input_string = "bnananas\\b and \\n ann\\f\\rn\\\"nd coff\\\\ee\\'are\\n\\t\\ttasty"
+		expected = "bnananas\b and \n ann\f\rn\"nd coff\\ee'are\n\t\ttasty"
+
+		for delim in ["'",'"']:
+			self.assertEqual(lex(delim+input_string+delim).next(), ("string", expected))
+
+		invalid_string = "banana \\ in my eye"
+		with self.assertRaises(JXIParseError) as e:
+			lex("'%s'" % invalid_string).next()
+
+
 # 			4.1.2.2 unicode literals
+
+	def test_unicode_literals(self):
+		input_string = ""
 # 				4.1.2.2.1 get 4 hex chars
 # 					4.1.2.2.1.1 EXCEPTION: non-hex char
 # 			4.1.2.3 EXCEPTION: invalid escape sequence

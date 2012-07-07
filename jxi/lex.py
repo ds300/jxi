@@ -147,21 +147,13 @@ def lex(input_text):
 					### UNICODE STUFFS ###
 					elif inp[i] == "u":
 						# do the 4-hexit unicode thing
-						# this algorithm shamelessly stolen from Doug Crockford's 
-						# javascript json parser (thanks Doug! Hope you don't mind)
-						charcode = 0
 						i += 1
-						for j in xrange(4):
-							try:
-								u = int(inp[i], 16)
-							except ValueError:
-								msg = "invalid unicode hexadecimal format"
-								raise JXIParseError(msg, line_start_char, i)
-							except IndexError:
-								msg = "Unexpected EOF during Unicode Escape"
-								raise JXIParseError(msg, line_start_char, i)
-							charcode = charcode * 16 + u
-							i += 1
+						try:
+							charcode = int(inp[i:i+4], 16)
+						except ValueError:
+							msg = "invalid unicode hexadecimal format"
+							raise JXIParseError(msg, line_start_char, i)
+						i += 4
 						text += unichr(charcode).encode("utf-8")
 
 					else:
