@@ -172,13 +172,13 @@ class TestJsonStrings(unittest.TestCase):
 			interesting_chars = set(["\b", "\f", "\n", "\r", 
 			                         "\t", "\\", delim])
 			for i in xrange(100):
-				text = ""
+				text = u""
 				for j in xrange(random.randint(1,1000)):
-					c = unichr(random.randint(0,65535)).encode("utf-8")
+					c = unichr(random.randint(0,65535))
 					if c not in interesting_chars:
 						text+=c
 
-				self.assertEqual(lex(delim+text+delim).next(), ("string", text))
+				self.assertEqual(lex(delim+text+delim).next(), ("string", text.encode("utf-8")))
 
 # 		4.1.2 backslash escape
 # 			4.1.2.1 control characters
@@ -189,50 +189,115 @@ class TestJsonStrings(unittest.TestCase):
 		for delim in ["'",'"']:
 			self.assertEqual(lex(delim+input_string+delim).next(), ("string", expected))
 
+# 			4.1.2.3 EXCEPTION: invalid escape sequence
 		invalid_string = "banana \\ in my eye"
 		with self.assertRaises(JXIParseError) as e:
 			lex("'%s'" % invalid_string).next()
 
+# 		4.1.3 EXCEPTION: unescaped somethingorother
+		with self.assertRaises(JXIParseError):
+			lex("'blahblah blah\n blah'").next()
+
+		# also check unterminated string
+		with self.assertRaises(JXIParseError):
+			lex('"blahblahblah').next()
+
 
 # 			4.1.2.2 unicode literals
-
 	def test_unicode_literals(self):
-		input_string = ""
 # 				4.1.2.2.1 get 4 hex chars
+		input_string = u"主要提供网页、音乐、图片、新闻搜索，同时有帖吧和WAP搜索功 टठडणष\nཏ ཐདནཤ"
+		def strip_and_pad(hexstr):
+			if hexstr.startswith("0x"):
+				hexstr = hexstr[2:]
+			while len(hexstr) < 4:
+				hexstr = "0" + hexstr
+			return hexstr
+		hexes = [strip_and_pad(hex(ord(c))) for c in input_string]
+		escaped = "'\\u%s'" % "\\u".join(hexes)
 # 					4.1.2.2.1.1 EXCEPTION: non-hex char
-# 			4.1.2.3 EXCEPTION: invalid escape sequence
-# 		4.1.3 EXCEPTION: unescaped somethingorother
+		with self.assertRaises(JXIParseError):
+			lex("'helloth\uab4xere'").next()
+		with self.assertRaises(JXIParseError):
+			lex("'helloth\ugb41ere'").next()
+		with self.assertRaises(JXIParseError):
+			lex("'helloth\uabv0ere'").next()
+		with self.assertRaises(JXIParseError):
+			lex("'helloth\uat6fxere'").next()
 
+class TestNumbers(unittest.TestCase):
 # 5. numbers
+	def test_numbers(self):
 # 	5.1 optional minus
+		self.assertEqual(lex("-5").next(), ("int", -5))
+		self.assertEqual(lex("-5.01234").next(), ("float", -5.01234))
 # 	5.2 starts with 0
-# 	5.3 starts with 1-9 followed by any number of other digits
-# 	5.4 EXCEPTION: something other than 0-9 after initial minus
+		self.assertEqual(lex("0").next(), ("int", 0))
+		self.assertEqual(lex("0.124").next(), ("float", 0.124))
+
+		# check preceding 0s get stripped
+		self.assertEqual(lex("00").next(), ("int", 0))
+		self.assertEqual(lex("000004").next(), ("int", 4))
+		self.assertEqual(lex("00000").next(), ("int", 0))
+		self.assertEqual(lex("00000.124").next(), ("float", 0.124))
+		self.assertEqual(lex("00000.0").next(), ("float", 0))
+		self.assertEqual(lex("00000001.124").next(), ("float", 1.124))
 # 	5.5 optional "."
+		# already taken care of
 # 		5.5.1 EXCEPTION: "." not followed by digit
+		with self.assertRaises(JXIParseError):
+			lex("000234.").next()
+		with self.assertRaises(JXIParseError):
+			lex("000234.s").next()
+		with self.assertRaises(JXIParseError):
+			lex("000234.#").next()
 # 	5.6 optional exponent
+		self.assertEqual(lex("10e4").next(), ("float", 10e4))
+		self.assertEqual(lex("0.3e42").next(), ("float", 0.3e42))
+		self.assertEqual(lex("0.312342e3").next(), ("float", 0.312342e3))
 # 		5.6.1 optional + or -
+		self.assertEqual(lex("10e-4").next(), ("float", 10e-4))
+		self.assertEqual(lex("00.3e-42").next(), ("float", 0.3e-42))
+		self.assertEqual(lex("0.312342e+3").next(), ("float", 0.312342e+3))
 # 		5.6.2 EXCEPTION: no digits given
+		with self.assertRaises(JXIParseError):
+			lex("000234.4e").next()
+		with self.assertRaises(JXIParseError):
+			lex("000234.5e-").next()
+		with self.assertRaises(JXIParseError):
+			lex("000234e+").next()
 
 # 6. raw strings
+class TestRawStrings(unittest.TestCase):
+	def test_empty_strings(self):
+		self.assertEqual(lex("``").next(), ("rawstring", ""))
 # 	6.1 non-empty strings
+	def test_nonempty_strings(self):
+		self.assertEqual(lex("`hello i am a\n string`").next(), ("rawstring", "hello i am a\n string"))
 # 		6.1.1 string of uninteresting chars
-# 		6.1.2 possible backslash escape
-# 			6.1.2 delimiter needs escaping
-# 			6.1.2 backslash was meant as just a backslash
+	def test_uninteresting_chars(self):
+		interesting_chars = set(["\\", "`"])
+		for i in xrange(100):
+			text = u""
+			for j in xrange(random.randint(1,1000)):
+				c = unichr(random.randint(0,65535))
+				if c not in interesting_chars:
+					text+=c
 
-# places where index errors can occur, leading to EOF:
-# 	1 file ends with whitespace
-# 	3.1 file ends with ident
-# 	4.1 file ends after valid backslash escape in string literal
-# 	4.1.2 file ends during string literal
-# 	4.1.2.2.1 \u escape with less than 4 digits
-# 	5.2 file ends with a "-"
-# 	5.3 file ends with integer
-# 	5.5.1 file ends with a "."
-# 	5.5 file ends with digits after a "."
-# 	6.1 file ends after valid backslash escape in raw string literal
-# 	6.1.2 file ends during raw string literal
+			self.assertEqual(lex(u"`%s`" % text).next(), ("rawstring", text.encode("utf-8")))
+# 		6.1.2 possible backslash escape
+	def test_backslash_escape(self):
+		# backslashes only escape backticks. The rest of the time they are kept in
+		noescape = "blahblah\\blahfun\\nblahetc"
+		escape = "blahblahblah\\`somethingblah"
+		escape_expected = "blahblahblah`somethingblah"
+
+# 			6.1.2 backslash was meant as just a backslash
+		self.assertEqual(lex("`%s`" % noescape).next(), ("rawstring", noescape))
+# 			6.1.2 delimiter needs escaping
+		self.assertEqual(lex("`%s`" % escape).next(), ("rawstring", escape_expected))
+
+
 
 if __name__ == "__main__":
 	unittest.main()

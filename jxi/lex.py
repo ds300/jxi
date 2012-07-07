@@ -120,7 +120,7 @@ def lex(input_text):
 
 			# skip over delimiter
 			i += 1
-			text = ""
+			text = u""
 
 			# keep going until we see the delimiter again
 			while i < size and inp[i] != delim:
@@ -131,8 +131,10 @@ def lex(input_text):
 				text += inp[i:j]
 				i = j
 
+				if i == size: break
+
 				# now we're at a character that requires action to be taken
-				if i < size and inp[i] == "\\":
+				if inp[i] == "\\":
 					# we need to escape something
 					i += 1
 
@@ -154,7 +156,7 @@ def lex(input_text):
 							msg = "invalid unicode hexadecimal format"
 							raise JXIParseError(msg, line_start_char, i)
 						i += 4
-						text += unichr(charcode).encode("utf-8")
+						text += unichr(charcode)
 
 					else:
 						msg = "Invalid escape sequence '\\%s'" % inp[i]
@@ -164,9 +166,13 @@ def lex(input_text):
 					msg = "Unescaped %s detected in string literal" % repr(inp[i])
 					raise JXIParseError(msg, line_start_char, i)
 
+			if i >= size:
+				msg = "Unterminated string literal"
+				raise JXIParseError(msg, line_start_char, i)
+
 			# skip over final delimiter
 			i += 1
-			yield ("string", text)
+			yield ("string", text.encode("utf-8"))
 
 		### NUMBERS ###
 		elif inp[i] in number_start_chars:
@@ -177,29 +183,25 @@ def lex(input_text):
 				if inp[j] == "-":
 					j += 1
 
-				if j >= size:
+				if j == size:
 					msg = "Unexpected EOF after '-'"
 					raise JXIParseError(msg, line_start_char, j)
-				
-				# either 0 or 1-9
-				if inp[j] == "0":
-					j += 1
-				elif inp[j] in digits_sans_zero:
-					# if 1-9, then any other digits may follow
-					while j < size and inp[j] in digits:
-						j += 1
-				else:
+
+				if inp[j] not in digits:
 					msg = "Expecting digit after '-', got %s" % repr(inp[j])
 					raise JXIParseError(msg, line_start_char, j)
-
+				
+				while j < size and inp[j] in digits:
+					j += 1
+				
 				if j == size: break
 
 				# optional . followed by more digits
 				if inp[j] == ".":
 					numtype = float
 					j += 1
-					if inp[j] not in digits:
-						msg = "Expecting digit after '.', got %s" % repr(inp[j])
+					if j == size or inp[j] not in digits:
+						msg = "Expecting digit after '.', got %s" % (repr(inp[j]) if j < size else "EOF")
 						raise JXIParseError(msg, line_start_char, j)
 
 					while j < size and inp[j] in digits:
@@ -262,7 +264,7 @@ def lex(input_text):
 
 			# ignore final delimiter
 			i += 1
-			yield ("rawstring", text)
+			yield ("rawstring", text.encode("utf-8"))
 
 		else:
 			msg = "Illegal character %s" % repr(inp[i])
