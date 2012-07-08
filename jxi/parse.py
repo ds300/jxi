@@ -18,9 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from jxitag import JXITag
 import lex
-
 
 ######################
 ##### LINK STUFF #####
@@ -196,14 +194,14 @@ scheduled_links = []
 ######################################
 
 # this is the only publicly visible function
-def parse(text, tagclass=JXITag):
+def parse(text, tagclass=Entity):
 	"""
 this function will parse you some jxi and return a list of all the top-level elements
 in the given text.
 Synatx: 
-	parse(text [, tagclass=JXITag])
+	parse(text [, tagclass=Entity])
 text is some string of (hopefully legal) jxi markup
-tagclass can be used if you've implemented you own tag class or extended JXITag"""
+tagclass can be used if you've implemented you own tag class or extended Entity"""
 	global lexer, scheduled_links
 	scheduled_links = []
 	lexer = lex.lex(text)
@@ -227,7 +225,7 @@ tagclass can be used if you've implemented you own tag class or extended JXITag"
 
 token = None
 lexer = None
-tagclass = JXITag
+tagclass = Entity
 
 # retrieves the next token from the lexer
 def next():
@@ -403,3 +401,5 @@ def parse_link():
 	recognise("sym", ";")
 
 	return SymbolicLink(link, line)
+
+print parse("`Bananas on parade bitch yeah!!`")

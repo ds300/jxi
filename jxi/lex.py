@@ -19,6 +19,7 @@
 # THE SOFTWARE.
 
 import string
+from entity import RawString
 
 line = 1
 
@@ -66,7 +67,7 @@ def lex(input_text):
 	# put all them symbols we're interested in into sets for fast membership tests
 
 	whitespace = set([",", " ", "\v", "\t", "\n", "\r", "\f"])
-	symbols = set(['<','>','[',']','{','}', "(", ")",':','/', '=', "@", ".", ";"])
+	symbols = set(['<','>','[',']','{','}',':','/', '=', "@", ".", ";"])
 
 	digits = set([str(i) for i in range(10)])
 	digits_sans_zero = set([str(i) for i in range(1,10)])
@@ -283,7 +284,7 @@ def lex(input_text):
 
 			# ignore final delimiter
 			i += 1
-			yield ("rawstring", text.encode("utf-8"))
+			yield ("rawstring", RawString(text.encode("utf-8")))
 
 		else:
 			msg = "Illegal character %s" % repr(inp[i])
