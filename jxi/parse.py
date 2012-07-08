@@ -17,50 +17,73 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+
 from jxitag import JXITag
-from lex import lex, JXIParseError, line
+import lex
+
+
+######################
+##### LINK STUFF #####
+######################
 
 class SymbolicLink(object):
 	"""an absolute path to some element or attribute in the document"""
-	def __init__(self, args):
+	def __init__(self, args, line):
 		self.args = args
 		self.line = line
 
 class LinkEvaluator(object):
+	"""
+	Abstract class. Finds the target of a symbolic link. If the target is another
+	symbolic link, pushes itself to the end of the link evaluation queue. If no 
+	target is found, a JXIParseError is raised.
+	"""
 	def __init__(self, link):
 		self.link = link
 
+	# iterates over the link argumemts to find the target. 
 	def find_target(self, document):
 		args = self.link.args
 		target = document
 		i = 0
 		while i < len(args):
 			operator, operand = args[i]
-			print operator, operand
+
+			### TAG NAME & POSSIBLE INDEX ###
 			if operator == ">":
+				# tag names are only considered for list-like elements
 				if type(target) not in (list, tagclass):
 					msg = "Link not found. Unable to find tag name '%s'. Parent cannot contain tags." % operand
-					raise JXIParseError(msg, self.link.line)
+					raise lex.JXIParseError(msg, lineoverride=self.link.line)
+				
 				tagname = operand
-				# search for a specific tag
+
+				# check if we've been given an index
 				if i < len(args) and args[i+1][0] == "[":
 					# search by group index
 					i += 1
 					target_index = args[i][1]
+
+					# tags can only be indexed by integers
 					if type(target_index) != int:
 						msg = "Link not found. Tag indices in symbolic links must be integers!"
-						raise JXIParseError(msg, self.link.line)
+						raise lex.JXIParseError(msg, lineoverride=self.link.line)
 
-					count = -1
+					count = -1 # we use this to match against the target index
+
+					# iterate over elements in current target
 					for elem in target:
+						# only consider eliments with the specified tag name
 						if type(elem) == tagclass and elem._tag_name == tagname:
 							count += 1
 							if count == target_index:
 								target = elem
 								break
+
 					if count != target_index:
 						msg = "Link not found. No tag with name '%s' and group index '%s'" % (tagname,target_index)
-						raise JXIParseError(msg, self.link.line)
+						raise lex.JXIParseError(msg, lineoverride=self.link.line)
+
 				else:
 					# just fine the first element with that tag name
 					for elem in target:
@@ -68,31 +91,38 @@ class LinkEvaluator(object):
 							target = elem
 							break
 
+			### TAG ATTRIBUTE ###
 			elif operator == ".":
 				if type(target) != tagclass:
 					msg = "Link not found. Non-tag element cannot have attribute '%s'" % operand
 				elif not hasattr(target, operand):
 					msg = "Link not found. No attribute '%s'" % operand
-					raise JXIParseError(msg, self.link.line)
+					raise lex.JXIParseError(msg, lineoverride=self.link.line)
 
 				target = getattr(target, operand)
 
+			### INDEX OF SOME KIND ###
 			elif operator == "[":
+				# lists and tags can only be indexed by integers
 				if type(target) in (list, tagclass):
-					# ensure operand is an int
+					# ensure int
 					if not type(operand) == int:
 						msg = "Link not found. Lists and tags must be indexed by integers"
-						raise JXIParseError(msg, self.link.line)
+						raise lex.JXIParseError(msg, lineoverride=self.link.line)
+					# ensure valid index
 					elif operand < 0 or operand >= len(target):
 						msg = "Link not found. Invalid index '%s'" % operand
-						raise JXIParseError(msg, self.link.line)
+						raise lex.JXIParseError(msg, lineoverride=self.link.line)
+
+				# only other indexable type is dict
 				elif type(target) == dict:
+					# just check that the key exists (can be int, string, ident)
 					if operand not in target:
 						msg = "Link not found. Invalid index '%s'" % operand
-						raise JXIParseError(msg, self.link.line)
+						raise lex.JXIParseError(msg, lineoverride=self.link.line)
 				else:
 					msg = "Link not found. Invalid index '%s'. Parent unsubscriptable." % operand
-					raise JXIParseError(msg, self.link.line)
+					raise lex.JXIParseError(msg, lineoverride=self.link.line)
 
 				target = target[operand]
 
@@ -100,6 +130,14 @@ class LinkEvaluator(object):
 
 		return target
 
+	# find target and decide whether to delay or finish and delegate to subclass
+	def evaluate(self, document):
+		target = self.find_target(document)
+		if type(target) == SymbolicLink:
+			self.delay()
+		else:
+			self.remove()
+			self.set_target(target) # implemented in sub-classes
 
 	def remove(self):
 		scheduled_links.remove(self)
@@ -108,66 +146,84 @@ class LinkEvaluator(object):
 		self.remove()
 		scheduled_links.append(self)
 
+# evaluate a link which was declared in a list-like element
 class ListLinkEvaluator(LinkEvaluator):
 	def __init__(self, link, listobj, index):
 		LinkEvaluator.__init__(self, link)
 		self.listobj = listobj
 		self.index = index
 
-	def evaluate(self, document):
-		target = self.find_target(document)
-		if type(target) == SymbolicLink:
-			self.delay()
-		else:
-			self.listobj[self.index] = target
-			self.remove()
-		
+	def set_target(self, target):
+		self.listobj[self.index] = target
 
+# evaluate a link which was declared as a tag attribute
 class TagLinkEvaluator(LinkEvaluator):
 	def __init__ (self, link, obj, attr):
 		LinkEvaluator.__init__(self, link)
 		self.obj = obj
 		self.attr = attr
 
-	def evaluate(self, document):
-		target = self.find_target(document)
-		if type(target) == SymbolicLink:
-			self.delay()
-		else:
-			setattr(self.obj, attr, target)
-			self.remove()
+	def set_target(self, target):
+		setattr(self.obj, self.attr, target)
 
-
+# evaluate a link which was declared in a set literal
 class SetLinkEvaluator(LinkEvaluator):
 	def __init__ (self, link, setobj):
 		LinkEvaluator.__init__(self, link)
 		self.setobj = setobj
 
-	def evaluate(self, document):
-		target = self.find_target(document)
-		if type(target) == SymbolicLink:
-			self.delay()
-		else:
-			self.setobj.remove(self.link)
-			self.setobj.add(target)
-			self.remove()
+	def set_target(self, target):
+		self.setobj.remove(self.link)
+		self.setobj.add(target)
 
+# evaluate a link which was declared in a dict literal
 class DictLinkEvaluator(LinkEvaluator):
 	def __init__ (self, link, dictobj, key):
 		LinkEvaluator.__init__(self, link)
 		self.dictobj = dictobj
 		self.key = key
 
-	def evaluate(self, document):
-		target = self.find_target(document)
-		if type(target) == SymbolicLink:
-			self.delay()
-		else:
-			self.dictobj[self.key] = target
-			self.remove()
+	def set_target(self, target):
+		self.dictobj[self.key] = target
 
 
+# the link evaluation queue
 scheduled_links = []
+
+
+######################################
+### RECURSIVE DESCENT PARSING BITS ###
+######################################
+
+# this is the only publicly visible function
+def parse(text, tagclass=JXITag):
+	"""
+this function will parse you some jxi and return a list of all the top-level elements
+in the given text.
+Synatx: 
+	parse(text [, tagclass=JXITag])
+text is some string of (hopefully legal) jxi markup
+tagclass can be used if you've implemented you own tag class or extended JXITag"""
+	global lexer, scheduled_links
+	scheduled_links = []
+	lexer = lex.lex(text)
+	next()
+	result = parse_file()
+
+	# in the worst case, only one link gets evaluated per iteration, so we
+	# have n*(n+1)/2 possible evaluations. set safety counter to (n*(n+1)/2) + 1
+	# so that we can tell for definites if an infinite loop has been encountered
+	safety_counter = (len(scheduled_links)*(len(scheduled_links) + 1))//2 + 1
+	while len(scheduled_links) > 0 and safety_counter > 0:
+		scheduled_links[0].evaluate(result)
+		safety_counter -= 1
+
+	if safety_counter == 0:
+		msg = "Infinite symbolic link cycle detected. What is this i don't even"
+		raise lex.JXIParseError(msg, lineoverride=scheduled_links[0].link.line)
+
+	return result
+
 
 token = None
 lexer = None
@@ -177,33 +233,17 @@ tagclass = JXITag
 def next():
 	global token
 	token = lexer.next()
-	print token
 
-
-# recognises a symbol and moves on
+# recognises a symbol and moves on. Raises an error if the args don't match
+# the token
 def recognise(type, sym):
 	if token == (type, sym):
 		next()
 	else:
-		raise JXIParseError("expecting '%s', got '%s'" % (sym, token[1]))
+		raise lex.JXIParseError("expecting '%s', got '%s'" % (sym, token[1]))
 
-def parse(text, tagclass=JXITag):
-	"""
-	parse will parse you some JXI and return a list of all the top-level elements
-	in the given text.
-	"""
-	global lexer, scheduled_links
-	scheduled_links = []
-	lexer = lex(text)
-	next()
-	result = parse_file()
-	safety_counter = (len(scheduled_links)**2)/2 + 1
-	while len(scheduled_links) > 0 and safety_counter > 0:
-		print "doing it"
-		scheduled_links[0].evaluate(result)
-		safety_counter -= 1
-	return result
 
+# used at the top level of the document
 def parse_file():
 	elems = []
 	while not token[0] == "EOF":
@@ -213,6 +253,7 @@ def parse_file():
 			scheduled_links.append(ListLinkEvaluator(elem, elems, len(elems)-1))
 	return elems
 
+# parses a tag or an attribute
 def parse_element():
 	if token == ("sym", "<"):
 		next()
@@ -226,7 +267,7 @@ def parse_tag():
 
 	# require tag name
 	if not token[0] == "ident":
-		raise JXIParseError("expecting tag name, got '%s'" % str(token))
+		raise lex.JXIParseError("expecting tag name, got '%s'" % str(token))
 
 	name = token[1]
 	next()
@@ -284,7 +325,7 @@ def parse_attribute():
 	elif token == ("sym", "@"):
 		return parse_link()
 	else:
-		raise JXIParseError("expecting attribute literal, got '%s'" % token[1])
+		raise lex.JXIParseError("expecting attribute literal, got '%s'" % token[1])
 
 def parse_list():
 	thelist = []
@@ -310,7 +351,7 @@ def parse_dict():
 			if type(elem) == SymbolicLink:
 				scheduled_links.append(DictLinkEvaluator(elem, thedict, name))
 		else:
-			raise JXIParseError("expecting attribute literal")
+			raise lex.JXIParseError("expecting attribute literal")
 	recognise("sym","}")
 	return thedict
 
@@ -326,9 +367,10 @@ def parse_set():
 
 def parse_link():
 	recognise("sym", "@")
+	line = lex.line
 
 	if token[0] != "sym" or token[1] not in (">", "["):
-		raise JXIParseError("Bad symbolic link syntax. Expecting ':' or index")
+		raise lex.JXIParseError("Bad symbolic link syntax. Expecting ':' or index")
 
 	link = []
 
@@ -337,7 +379,7 @@ def parse_link():
 			# tag name
 			next()
 			if token[0] != "ident": 
-				raise JXIParseError("'>' should be followed by a tag name")
+				raise lex.JXIParseError("'>' should be followed by a tag name")
 			link.append((">", token[1]))
 			next()
 
@@ -345,7 +387,7 @@ def parse_link():
 			# tag attribute
 			next()
 			if token[0] != "ident": 
-				raise JXIParseError("'.' should be followed by an attribute name")
+				raise lex.JXIParseError("'.' should be followed by an attribute name")
 			link.append((".", token[1]))
 			next()
 
@@ -353,25 +395,11 @@ def parse_link():
 			# index of something
 			next()
 			if token[0] not in ("ident", "int", "string", "rawstring"): 
-				raise JXIParseError("'.' should be followed by an attribute name")
+				raise lex.JXIParseError("'.' should be followed by an attribute name")
 			link.append(("[", token[1]))
 			next()
 			recognise("sym", "]")
 
 	recognise("sym", ";")
 
-	return SymbolicLink(link)
-
-
-print parse("""
-
-<steve time=6 />
-<steve banana={hello:true, death:"ohyesindeed"} />
-@>steve.time;
-@[0].time;
-@>steve[1].banana[death];
-
-""")
-
-
-
+	return SymbolicLink(link, line)

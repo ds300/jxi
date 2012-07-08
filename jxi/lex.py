@@ -36,7 +36,7 @@ class JXIParseError(Exception):
 			msg += "\tMessage: " + message
 			self.msg = msg
 		else:
-			self.msg = "Error detected on line %s\n\tMessage: %s" % (line, message)
+			self.msg = "Error detected on line %s\n\tMessage: %s" % (self.line, message)
 	def __str__(self):
 		return self.msg
 
